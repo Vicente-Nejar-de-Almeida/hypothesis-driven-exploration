@@ -13,7 +13,14 @@ from datasets.MovieLens import params
 
 dataframe = pd.read_csv('../datasets/MovieLens/MovieLens.csv')
 
-dataset = Dataset(dataframe=dataframe, multi_value_attribute_names=params.multi_value_attribute_names, attributes=params.attributes, action_dimension=params.action_dimension)
+dataset = Dataset(
+    dataframe=dataframe,
+    multi_value_attribute_names=params.multi_value_attribute_names,
+    attributes=params.attributes,
+    action_dimension=params.action_dimension,
+    action_dimension_min=params.action_dimension_min,
+    action_dimension_max=params.action_dimension_max
+)
 
 group = Group(dataset=dataset, predicates={})
 print('All users:', group.encode())

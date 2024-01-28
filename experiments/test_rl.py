@@ -1,5 +1,8 @@
-import numpy as np
+import gymnasium as gym
 import pandas as pd
+
+from stable_baselines3 import DQN
+from stable_baselines3.common.logger import configure
 
 import sys
 sys.path.append("..")
@@ -42,10 +45,22 @@ env = GroupExplorationEnv(
     w2=w2,
 )
 
-observation = env.reset()
+tmp_path = "/tmp/sb3_log/"
+# set up logger
+new_logger = configure(tmp_path, ["stdout", "csv", "tensorboard"])
+
+model = DQN("MultiInputPolicy", env, verbose=1)
+model.set_logger(new_logger)
+model.learn(total_timesteps=10, log_interval=4)
+
+# model.save("hypo_explorer")
+# del model
+# model = DQN.load("hypo_explorer")
+
+obs, info = env.reset()
 done = False
 while not done:
-    action = 0
-    observation, reward, terminated, truncated, info = env.step(action=action)
+    action, _states = model.predict(obs, deterministic=True)
+    obs, reward, terminated, truncated, info = env.step(action)
     print(info)
     done = terminated or truncated

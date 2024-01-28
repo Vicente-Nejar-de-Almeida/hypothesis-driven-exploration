@@ -1,5 +1,9 @@
-import numpy as np
 import pandas as pd
+
+from stable_baselines3.common.logger import configure
+from sb3_contrib.ppo_mask import MaskablePPO
+from sb3_contrib.common.maskable.utils import get_action_masks
+from stable_baselines3.common.vec_env import DummyVecEnv
 
 import sys
 sys.path.append("..")
@@ -31,21 +35,34 @@ initial_wealth = eta * alpha
 w1 = 0.5
 w2 = 0.5
 
-env = GroupExplorationEnv(
-    D=dataset,
-    H=[hypothesis],
-    alpha=alpha,
-    n=n,
-    eta=eta,
-    lambd=lambd,
-    w1=w1,
-    w2=w2,
-)
 
-observation = env.reset()
+def make_env():
+    return GroupExplorationEnv(
+        D=dataset,
+        H=[hypothesis],
+        alpha=alpha,
+        n=n,
+        eta=eta,
+        lambd=lambd,
+        w1=w1,
+        w2=w2,
+    )
+
+
+env = DummyVecEnv([make_env])
+model = MaskablePPO("MultiInputPolicy", env, gamma=1, seed=32, verbose=1, n_steps=10)
+model.learn(total_timesteps=30, log_interval=1)
+
+# model.save("hypo_explorer")
+# del model
+# model = MaskablePPO.load("hypo_explorer")
+
+env = make_env()
+obs, info = env.reset()
 done = False
 while not done:
-    action = 0
-    observation, reward, terminated, truncated, info = env.step(action=action)
+    action_masks = get_action_masks(env)
+    action, _states = model.predict(obs, action_masks=action_masks)
+    obs, reward, terminated, truncated, info = env.step(action)
     print(info)
     done = terminated or truncated
