@@ -1,5 +1,8 @@
 action_dimension = 'rating'
 
+action_dimension_min = 1
+action_dimension_max = 5
+
 attributes = {
     'genre': [
         'Action',

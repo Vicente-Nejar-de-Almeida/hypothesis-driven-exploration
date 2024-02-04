@@ -29,15 +29,15 @@ class GreedyExplorer:
         self.q = PriorityQueue()
         self.G_out_dict = {}
         self.request_history = []  # (str(g), h)
-        self.run_covid_at_root()
+        self.run_covdiv_at_root()
     
     def run_covdiv(self, g_in, h):
-        G_out, self.wealth, obj_value, cov_value, div_value, tested_requests = covdiv_alpha(D=self.D, g_in=g_in, h=h, alpha=self.alpha, n=self.n, wealth=self.wealth, lambd=self.lambd, w1=self.w1, w2=self.w2, request_history=self.request_history)
+        G_out, self.wealth, obj_value, cov_value, div_value, tested_requests, rejects, pvals = covdiv_alpha(D=self.D, g_in=g_in, h=h, alpha=self.alpha, n=self.n, wealth=self.wealth, lambd=self.lambd, w1=self.w1, w2=self.w2, request_history=self.request_history)
         self.q.put((-obj_value, (g_in, h)))
         self.G_out_dict[(g_in, h)] = G_out
         self.request_history += tested_requests
     
-    def run_covid_at_root(self):
+    def run_covdiv_at_root(self):
         g_in = Group(dataset=self.D, predicates={})
         for h in self.H:
             if self.wealth <= 0: return

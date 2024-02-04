@@ -4,13 +4,28 @@ from hypothesis_exploration.user_data_model import Dataset, Group, generate_cand
 from hypothesis_exploration.hypothesis_testing.hypothesis_test import HypothesisTest
 
 
+def proportion_of_new_users(new_group: Group, G: [Group]):
+    if len(new_group.user_ids) == 0:
+        return 0
+    
+    G_user_ids = set([id for g in G for id in g.user_ids])
+    new_user_count = 0
+    for uid in new_group.user_ids:
+        if uid not in G_user_ids:
+            new_user_count += 1
+    
+    return new_user_count / len(new_group.user_ids)
+
+
 def covdiv_alpha(D: Dataset, g_in: Group, h: HypothesisTest, alpha: float, n: float, wealth: float, lambd: float, w1: float, w2: float, request_history: list) -> tuple[list, float, float, float, float]:
-    candidate_groups = [g for g in generate_candidates(g_in=g_in, dataset=D, min_sample_size=4) if (str(g), h) not in request_history]
+    candidate_groups = [g for g in generate_candidates(g_in=g_in, dataset=D) if (str(g), h) not in request_history]
     available_wealth = wealth
     alpha_star = available_wealth / (lambd + available_wealth)
     G_out = set()
     tested_requests = []
-    previous_objective_value = 0
+    rejects = []
+    pvals = []
+    # previous_objective_value = 0
     while (len(candidate_groups) > 0) and (available_wealth > 0) and (len(G_out) < n):
         if len(G_out) == 0:
             candidate_obj_values = [coverage({g}, g_in) for g in candidate_groups]
@@ -19,24 +34,29 @@ def covdiv_alpha(D: Dataset, g_in: Group, h: HypothesisTest, alpha: float, n: fl
             g_star_index = np.argmax([w1 * coverage(G_out.union({g}), g_in) + w2 * diversity(G_out.union({g})) for g in candidate_groups])
         g_star = candidate_groups.pop(g_star_index)
         
-        new_obj_value = w1 * coverage(G_out.union({g_star}), g_in) + w2 * diversity(G_out.union({g_star}))
-        obj_gain = new_obj_value - previous_objective_value
-        previous_objective_value = new_obj_value
+        # new_obj_value = w1 * coverage(G_out.union({g_star}), g_in) + w2 * diversity(G_out.union({g_star}))
+        # obj_gain = new_obj_value - previous_objective_value
+        # previous_objective_value = new_obj_value
 
-        current_alpha = alpha_star * sqrt(max(obj_gain, 0))
+
+        current_alpha = alpha_star * sqrt(w1 * coverage({g_star}, g_in) + w2 * proportion_of_new_users(g_star, G_out))
         if available_wealth - (current_alpha / (1 - current_alpha)) >= 0:
-            if h.test(g_star.sample) <= current_alpha:
+            pval = h.test(g_star.sample)
+            pvals.append(pval)
+            if pval <= current_alpha:
                 available_wealth += alpha
                 G_out.add(g_star)
+                rejects.append(True)
             else:
                 available_wealth -= (current_alpha / (1 - current_alpha))
+                rejects.append(False)
             tested_requests.append((str(g_star), h))
     
     cov_value = coverage(G_out, g_in)
     div_value = diversity(G_out)
     obj_value = w1 * cov_value + w2 * div_value
     
-    return G_out, available_wealth, obj_value, cov_value, div_value, tested_requests
+    return G_out, available_wealth, obj_value, cov_value, div_value, tested_requests, rejects, pvals
 
 """
 def covdiv_alpha(D: Dataset, g_in: Group, h: HypothesisTest, alpha: float, n: float, wealth: float, lambd: float, w1: float, w2: float, request_history: list) -> tuple[list, float, float, float, float]:

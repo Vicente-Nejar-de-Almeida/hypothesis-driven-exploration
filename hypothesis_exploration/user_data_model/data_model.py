@@ -4,7 +4,7 @@ from itertools import combinations
 
 
 class Dataset:
-    def __init__(self, dataframe: pd.DataFrame, attributes: dict, multi_value_attribute_names: [str], action_dimension: str):
+    def __init__(self, dataframe: pd.DataFrame, attributes: dict, multi_value_attribute_names: [str], action_dimension: str, action_dimension_min: float, action_dimension_max: float):
         self.dataframe = dataframe
         self.attributes = attributes  # {'att1': ['val1', 'val2', 'val3']}
         self.multi_value_attribute_names = multi_value_attribute_names
@@ -12,8 +12,8 @@ class Dataset:
 
         self.user_ids = set(dataframe.user_id.unique())
 
-        self.action_dimension_min = dataframe[self.action_dimension].min()
-        self.action_dimension_max = dataframe[self.action_dimension].max()
+        self.action_dimension_min = action_dimension_min
+        self.action_dimension_max = action_dimension_max
 
         USER_COUNT_LEN = 1
         ACTION_DESCRIPTION_LEN = 7
@@ -36,7 +36,9 @@ class Dataset:
             dataframe=filtered_dataframe,
             attributes=self.attributes,
             multi_value_attribute_names=self.multi_value_attribute_names,
-            action_dimension=self.action_dimension
+            action_dimension=self.action_dimension,
+            action_dimension_min=self.action_dimension_min,
+            action_dimension_max=self.action_dimension_max,
         )
 
 
@@ -80,7 +82,7 @@ class Group:
         return self.encoded
 
 
-def generate_candidates(g_in: Group, dataset: Dataset, min_sample_size: dict = 1) -> [Group]:
+def generate_candidates(g_in: Group, dataset: Dataset, min_sample_size: int = 20) -> [Group]:
     candidate_groups = []
     for att, possible_vals in dataset.attributes.items():
         if att not in g_in.predicates:

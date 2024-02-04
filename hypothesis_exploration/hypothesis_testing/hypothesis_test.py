@@ -16,12 +16,13 @@ class HypothesisTest:
 
     def test(self, *args) -> float:
         if self.n_sample == self.ONE_SAMPLE:
-            return one_sample_hypothesis_test(
+            p_value = one_sample_hypothesis_test(
                 *args,
                 aggregation=self.aggregation,
                 null_value=self.null_value,
                 alternative=self.alternative,
             )
+            return p_value
     
     def __str__(self):
         if self.n_sample == self.ONE_SAMPLE:
