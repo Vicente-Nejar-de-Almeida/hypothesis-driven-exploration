@@ -1,10 +1,10 @@
 import numpy as np
 from math import sqrt
-from hypothesis_exploration.user_data_model import Dataset, Group, generate_candidates, coverage, diversity
+from hypothesis_exploration.user_data_model import Dataset, Group, generate_candidates, coverage, jaccard_distance
 from hypothesis_exploration.hypothesis_testing.hypothesis_test import HypothesisTest
 
 
-def proportion_of_new_users(new_group: Group, G: [Group]):
+def proportion_of_new_users(new_group: Group, G: list[Group]):
     if len(new_group.user_ids) == 0:
         return 0
     
@@ -17,83 +17,61 @@ def proportion_of_new_users(new_group: Group, G: [Group]):
     return new_user_count / len(new_group.user_ids)
 
 
-def covdiv_alpha(D: Dataset, g_in: Group, h: HypothesisTest, alpha: float, n: float, wealth: float, lambd: float, w1: float, w2: float, request_history: list) -> tuple[list, float, float, float, float]:
-    candidate_groups = [g for g in generate_candidates(g_in=g_in, dataset=D) if (str(g), h) not in request_history]
+def diversity_among_candidates(g, C):
+    if len(C) == 0:
+        return 0
+    
+    diversities = []
+    for c in C:
+        diversities.append(jaccard_distance(g.user_ids, c.user_ids))
+    else:
+        return np.mean(diversities)
+
+
+def marginal_gain_on_diversity(g, G):
+    if len(G) == 0:
+        return 0
+    
+    return sum([jaccard_distance(g.user_ids, g2.user_ids) for g2 in G])
+
+
+def marginal_gain_on_coverage(g, G, g_in):
+    return coverage(G.union({g}), g_in) - coverage(G, g_in)
+
+
+def covdiv_alpha(D: Dataset, g_in: Group, h: HypothesisTest, alpha: float, n: float, wealth: float, gamma: float, lambd: float, request_history: dict) -> tuple[list, float]:
+    candidate_groups = generate_candidates(g_in=g_in, dataset=D)
     available_wealth = wealth
-    alpha_star = available_wealth / (lambd + available_wealth)
+    alpha_star = available_wealth / (gamma + available_wealth)
     G_out = set()
-    tested_requests = []
-    rejects = []
-    pvals = []
-    # previous_objective_value = 0
+
     while (len(candidate_groups) > 0) and (available_wealth > 0) and (len(G_out) < n):
+        g_star_index = np.argmax([(1/2) * marginal_gain_on_coverage(g, G_out, g_in) + lambd * marginal_gain_on_diversity(g, G_out) for g in candidate_groups])
+        """
         if len(G_out) == 0:
-            candidate_obj_values = [coverage({g}, g_in) for g in candidate_groups]
-            g_star_index = candidate_obj_values.index(np.percentile(candidate_obj_values, w1 * 100, method='nearest'))
+            g_star_index = np.argmax([(1/2) * marginal_gain_on_coverage(g, G_out, g_in) + lambd * diversity_among_candidates(g, [g2 for g2 in candidate_groups if g2 != g]) for g in candidate_groups])
         else:
-            g_star_index = np.argmax([w1 * coverage(G_out.union({g}), g_in) + w2 * diversity(G_out.union({g})) for g in candidate_groups])
-        g_star = candidate_groups.pop(g_star_index)
+            g_star_index = np.argmax([(1/2) * marginal_gain_on_coverage(g, G_out, g_in) + lambd * marginal_gain_on_diversity(g, G_out) for g in candidate_groups])
+        """
         
-        # new_obj_value = w1 * coverage(G_out.union({g_star}), g_in) + w2 * diversity(G_out.union({g_star}))
-        # obj_gain = new_obj_value - previous_objective_value
-        # previous_objective_value = new_obj_value
+        g_star = candidate_groups.pop(g_star_index)
 
-
-        current_alpha = alpha_star * sqrt(w1 * coverage({g_star}, g_in) + w2 * proportion_of_new_users(g_star, G_out))
+        x = (1 / (1 + lambd))
+        current_alpha = alpha_star * sqrt(x * coverage({g_star}, g_in) + lambd * x * proportion_of_new_users(g_star, G_out))
+        
+        if (str(g_star), h) in request_history:
+            if request_history[(str(g_star), h)][1]:
+                G_out.add(g_star)
+            continue
+            
         if available_wealth - (current_alpha / (1 - current_alpha)) >= 0:
             pval = h.test(g_star.sample)
-            pvals.append(pval)
             if pval <= current_alpha:
                 available_wealth += alpha
                 G_out.add(g_star)
-                rejects.append(True)
+                request_history[(str(g_star), h)] = (pval, True)
             else:
                 available_wealth -= (current_alpha / (1 - current_alpha))
-                rejects.append(False)
-            tested_requests.append((str(g_star), h))
+                request_history[(str(g_star), h)] = (pval, False)
     
-    cov_value = coverage(G_out, g_in)
-    div_value = diversity(G_out)
-    obj_value = w1 * cov_value + w2 * div_value
-    
-    return G_out, available_wealth, obj_value, cov_value, div_value, tested_requests, rejects, pvals
-
-"""
-def covdiv_alpha(D: Dataset, g_in: Group, h: HypothesisTest, alpha: float, n: float, wealth: float, lambd: float, w1: float, w2: float, request_history: list) -> tuple[list, float, float, float, float]:
-    candidate_groups = [g for g in generate_candidates(g_in=g_in, dataset=D, min_sample_size=4) if (str(g), h) not in request_history]
-    available_wealth = wealth
-    alpha_star = available_wealth / (lambd + available_wealth)
-    G_out = set()
-    obj_value = 0  # value of objective function
-    cov_value = 0  # value of coverage of G_out
-    div_value = 0  # value of diversity of G_out
-    tested_requests = []
-    while (len(candidate_groups) > 0) and (available_wealth > 0) and (len(G_out) < n):
-        best_new_obj_value = 0
-        cov_value_of_best = 0
-        div_value_of_best = 0
-        g_star = None
-        for g in candidate_groups:
-            cov = coverage(G_out.union({g}), g_in)
-            div = diversity(G_out.union({g}))
-            new_obj_value = w1 * cov + w2 * div
-            if new_obj_value >= best_new_obj_value:
-                g_star = g
-                best_new_obj_value = new_obj_value
-                cov_value_of_best = cov
-                div_value_of_best = div
-        candidate_groups.remove(g_star)
-        obj_gain = best_new_obj_value - obj_value
-        current_alpha = alpha_star * sqrt(max(obj_gain, 0))
-        if available_wealth - (current_alpha / (1 - current_alpha)) >= 0:
-            if h.test(g_star.sample) <= current_alpha:
-                available_wealth += alpha
-                G_out.add(g_star)
-                obj_value = best_new_obj_value
-                cov_value = cov_value_of_best
-                div_value = div_value_of_best
-            else:
-                available_wealth -= (current_alpha / (1 - current_alpha))
-            tested_requests.append((str(g_star), h))
-    return G_out, available_wealth, obj_value, cov_value, div_value, tested_requests
-"""
+    return G_out, available_wealth

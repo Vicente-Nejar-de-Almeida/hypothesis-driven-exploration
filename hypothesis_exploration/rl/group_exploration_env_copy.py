@@ -31,11 +31,7 @@ class GroupExplorationEnv(gym.Env):
 
         self.possible_attributes = {att: [] for att in self.D.attributes.keys()}
         for att in self.D.attributes:
-            vals_and_predicates = []
-            for val in self.D.attributes[att]:
-                g = Group(dataset=self.D, predicates={att: val})
-                vals_and_predicates.append((len(g.user_ids), val))
-            self.possible_attributes[att] = [v_p[1] for v_p in sorted(vals_and_predicates, key = lambda x: x[0], reverse=True)[:10]]
+            self.possible_attributes[att] += list(self.D.dataframe[att].value_counts()[:5].index)
 
         # self.q = PriorityQueue()
 
@@ -67,20 +63,11 @@ class GroupExplorationEnv(gym.Env):
         )
     
     def select_random_group(self):
-        available_attributes = {}
-        for att in self.possible_attributes:
-            for val in self.possible_attributes[att]:
-                if val not in self.previously_visited_top_groups[att]:
-                    if att in available_attributes:
-                        available_attributes[att].append(val)
-                    else:
-                        available_attributes[att] = [val]
-        
         random_predicate = {}
-        random_attribute = random.choice(list(available_attributes))
-        random_attribute_value = random.choice(available_attributes[random_attribute])
+        random_attribute = random.choice(list(self.possible_attributes))
+        random_attribute_value = random.choice(self.D.attributes[random_attribute])
         random_predicate[random_attribute] = random_attribute_value
-
+        group = Group(dataset=self.D, predicates=random_predicate)
         if (random_attribute, random_attribute_value) in self.previously_generated_groups:
             group = self.previously_generated_groups[(random_attribute, random_attribute_value)]
         else:
@@ -115,11 +102,6 @@ class GroupExplorationEnv(gym.Env):
         """
 
         # print('Before covdiv')
-
-        if len(g_in.predicates) == 1:
-            att = list(g_in.predicates.keys())[0]
-            val = g_in.predicates[att]
-            self.previously_visited_top_groups[att].append(val)
         
         G_out, self._wealth = covdiv_alpha(D=self.D, g_in=g_in, h=h, alpha=self.alpha, n=self.n, wealth=self._wealth, gamma=self.gamma, lambd=self.lambd, request_history=self._request_history)
 
@@ -127,9 +109,7 @@ class GroupExplorationEnv(gym.Env):
 
         x = (1 / (1 + self.lambd))
         # obj_value = x * coverage(G_out, g_in) + x * self.lambd * diversity(G_out, normalized=True)
-        cov = coverage(G_out, g_in)
-        div = diversity(G_out)
-        obj_value = cov + self.lambd * div
+        obj_value = coverage(G_out, g_in) + self.lambd * diversity(G_out)
 
         if (len(G_out) > 0) and (len(list(G_out)[0].predicates) < self.max_predicates):
             self._groups = list(G_out)
@@ -162,22 +142,19 @@ class GroupExplorationEnv(gym.Env):
         # done = (self._step == self.m) or (self._wealth <= 0) or (self._group_levels == [None] * len(self._group_levels))
         done = (self._step == self.m) or (self._wealth <= 0)
         info = {
+            'g_in_str': str(g_in),
             'g_in': g_in,
+            'h_str': str(h),
             'h': h,
+            'G_out_str': [str(g) for g in G_out],
             'G_out': G_out,
             'wealth': self._wealth,
-            'coverage': cov,
-            'diversity': div,
         }
-
-        if done:
-            self.previously_visited_top_groups = {att: [] for att in self.D.attributes}
 
         return observation, reward, done, False, info
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self.previously_visited_top_groups = {att: [] for att in self.D.attributes}
         self._step = 0
         self._wealth = self.eta * self.alpha
         self._groups = [self.select_random_group() for _ in range(self.n + self.additional_group_count)]
@@ -203,5 +180,4 @@ class GroupExplorationEnv(gym.Env):
                 mask += [True for _ in self.H]
             else:
                 mask += [False for _ in self.H]
-        print(mask)
         return mask

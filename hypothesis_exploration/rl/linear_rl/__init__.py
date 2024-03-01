@@ -1,0 +1,3 @@
+from hypothesis_exploration.rl.linear_rl.basis import Basis
+from hypothesis_exploration.rl.linear_rl.fourier import FourierBasis
+from hypothesis_exploration.rl.linear_rl.true_online_sarsa import TrueOnlineSarsaLambda

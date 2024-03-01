@@ -32,3 +32,6 @@ class HypothesisTest:
                 return f'{self.aggregation.capitalize()} is {self.ALTERNATIVE_TO_NL[self.alternative]} {self.null_value}'
         else:
             return ''
+    
+    def __lt__(self, other):
+        return str(self.null_value) < str(other.null_value)

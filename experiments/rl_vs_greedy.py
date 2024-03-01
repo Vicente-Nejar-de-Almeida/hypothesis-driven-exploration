@@ -1,147 +1,209 @@
 import pandas as pd
 
-from stable_baselines3.common.logger import configure
-from sb3_contrib.ppo_mask import MaskablePPO
-from sb3_contrib.common.maskable.utils import get_action_masks
-from stable_baselines3.common.vec_env import DummyVecEnv
+from utils import compute_significance
 
 import sys
 sys.path.append("..")
 
 from hypothesis_exploration.user_data_model import Dataset, coverage, diversity
 from hypothesis_exploration.hypothesis_testing import HypothesisTest
-from hypothesis_exploration.rl import GroupExplorationEnv
+from hypothesis_exploration.rl import GroupExplorationEnv, TrueOnlineSarsaLambda
 from hypothesis_exploration.greedy_algorithm import GreedyExplorer
 
-from datasets.MovieLens import params
+from datasets.MovieLens import params as movie_params
+from datasets.BookCrossing import params as book_params
+from datasets.Yelp import params as yelp_params
 
-dataframe = pd.read_csv('../datasets/MovieLens/MovieLens.csv')
+movie_dataframe = pd.read_csv('../datasets/MovieLens/MovieLens.csv')
+book_dataframe = pd.read_csv('../datasets/BookCrossing/BookCrossing.csv')
+yelp_dataframe = pd.read_csv('../datasets/Yelp/Yelp.csv')
 
-dataset = Dataset(
-    dataframe=dataframe,
-    multi_value_attribute_names=params.multi_value_attribute_names,
-    attributes=params.attributes,
-    action_dimension=params.action_dimension,
-    action_dimension_min=params.action_dimension_min,
-    action_dimension_max=params.action_dimension_max
+movie_dataset = Dataset(
+    dataframe=movie_dataframe,
+    multi_value_attribute_names=movie_params.multi_value_attribute_names,
+    attributes=movie_params.attributes,
+    action_dimension=movie_params.action_dimension,
+    action_dimension_min=movie_params.action_dimension_min,
+    action_dimension_max=movie_params.action_dimension_max
 )
 
-hypothesis = HypothesisTest(aggregation='mean', null_value=3, alternative='greater', n_sample=HypothesisTest.ONE_SAMPLE)
+book_dataset = Dataset(
+    dataframe=book_dataframe,
+    multi_value_attribute_names=book_params.multi_value_attribute_names,
+    attributes=book_params.attributes,
+    action_dimension=book_params.action_dimension,
+    action_dimension_min=book_params.action_dimension_min,
+    action_dimension_max=book_params.action_dimension_max
+)
+
+yelp_dataset = Dataset(
+    dataframe=yelp_dataframe,
+    multi_value_attribute_names=yelp_params.multi_value_attribute_names,
+    attributes=yelp_params.attributes,
+    action_dimension=yelp_params.action_dimension,
+    action_dimension_min=yelp_params.action_dimension_min,
+    action_dimension_max=yelp_params.action_dimension_max
+)
+
+movie_hypotheses = [
+    HypothesisTest(aggregation='mean', null_value=3.5, alternative='greater', n_sample=HypothesisTest.ONE_SAMPLE),
+]
+
+book_hypotheses = [
+    HypothesisTest(aggregation='mean', null_value=2, alternative='greater', n_sample=HypothesisTest.ONE_SAMPLE),
+]
+
+yelp_hypotheses = [
+    HypothesisTest(aggregation='mean', null_value=3.5, alternative='greater', n_sample=HypothesisTest.ONE_SAMPLE),
+]
 
 eta = 1
 alpha = 0.05
-lambd = 500
-# n_values = [2, 4, 6, 8, 10]
-n_values = [4]
+gamma = 500
+lambd = 1
+n = 3
+m = 35
 initial_wealth = eta * alpha
-# weight_values = [(1, 0), (0, 1), (0.25, 0.75), (0.75, 0.25), (0.5, 0.5)]
-weight_values = [(0.5, 0.5)]
 
-results = {
-    'step': [],
-    'n': [],
-    'w1': [],
-    'w2': [],
-    'algorithm': [],
-    'g_in': [],
-    'G_out': [],
-    'coverage': [],
-    'diversity': [],
-    'objective': [],
-    # 'time': []
+datasets = {
+    'MovieLens': (movie_dataset, movie_hypotheses),
+    'BookCrossing': (book_dataset, book_hypotheses),
+    'Yelp': (yelp_dataset, yelp_hypotheses),
 }
 
-for n in n_values:
-    print('n:', n)
+for dataset_name, dataset_variables in datasets.items():
+    print(dataset_name)
 
-    for weights in weight_values:
-        w1, w2 = weights
-        print('w:', weights)
+    dataset = dataset_variables[0]
+    hypotheses = dataset_variables[1]
 
-        def make_env():
-            return GroupExplorationEnv(
-                D=dataset,
-                H=[hypothesis],
-                alpha=alpha,
-                n=n,
-                eta=eta,
-                lambd=lambd,
-                w1=w1,
-                w2=w2,
-            )
+    pipeline_results = {
+        'algorithm': [],
+        'power': [],
+        'fdr': [],
+    }
 
+    stepwise_results = {
+        'algorithm': [],
+        'step': [],
+        'g_in': [],
+        'h': [],
+        'G_out': [],
+        'coverage': [],
+        'diversity': [],
+        'normalized_diversity': [],
+    }
 
-        env = DummyVecEnv([make_env])
-        model = MaskablePPO("MultiInputPolicy", env, gamma=1, seed=32, verbose=1, n_steps=10)
-        model.learn(total_timesteps=50, log_interval=1)
+    # Greedy-HEP
+    print('\tRunning Greedy-HEP')
+    greedy = GreedyExplorer(
+        D=dataset,
+        H=hypotheses,
+        alpha=alpha,
+        n=n,
+        eta=eta,
+        gamma=gamma,
+        lambd=lambd,
+    )
 
-        env = make_env()
+    greedy.reset()
+
+    for step in range(m):
+        selected_g_in, selected_G_out, selected_h = greedy.step()
+
+        cov = coverage(selected_G_out, selected_g_in)
+        div = diversity(selected_G_out, normalized=False)
+        div_norm = diversity(selected_G_out, normalized=True)
+
+        stepwise_results['algorithm'].append('Greedy-HEP')
+        stepwise_results['step'].append(step)
+        stepwise_results['g_in'].append(str(selected_g_in))
+        stepwise_results['h'].append(str(selected_h))
+        stepwise_results['G_out'].append(', '.join([str(g) for g in selected_G_out]))
+        stepwise_results['coverage'].append(cov)
+        stepwise_results['diversity'].append(div)
+        stepwise_results['normalized_diversity'].append(div_norm)
+    
+    greedy_power, greedy_fdr = compute_significance(greedy.request_history, alpha)
+    pipeline_results['algorithm'].append('Greedy-HEP')
+    pipeline_results['power'].append(greedy_power)
+    pipeline_results['fdr'].append(greedy_fdr)
+
+    # RL-HEP
+    print('\tTraining RL-HEP')
+    env = GroupExplorationEnv(
+        D=dataset,
+        H=hypotheses,
+        alpha=alpha,
+        n=n,
+        m=m,
+        eta=eta,
+        gamma=gamma,
+        lambd=lambd,
+        additional_group_count=1,
+        max_predicates=4,
+    )
+
+    obs, info = env.reset()
+    agent = TrueOnlineSarsaLambda(
+        env.observation_space,
+        env.action_space,
+        alpha=0.001,
+        fourier_order=5,
+        gamma=1,
+        lamb=0.9,
+        epsilon=0.0,
+        min_max_norm=True
+    )
+
+    episodes = 100
+    for episode in range(episodes):
+        print('\t\tEpisode', episode)
         obs, info = env.reset()
-        g_in_rl = []
-        G_out_rl = []
-
         done = False
         step = 0
         while not done:
-            action_masks = get_action_masks(env)
-            action, _states = model.predict(obs, action_masks=action_masks)
-            obs, reward, terminated, truncated, info = env.step(action)
-            print(info)
-            g_in_rl.append(info['g_in'])
-            G_out_rl.append(info['G_out'])
-            results['step'].append(step)
-            results['n'].append(n)
-            results['w1'].append(w1)
-            results['w2'].append(w2)
-            results['algorithm'].append('rl')
-            results['g_in'].append(info['g_in_str'])
-            results['G_out'].append('; '.join(info['G_out_str']))
-            cov = coverage(info['G_out'], info['g_in'])
-            div = diversity(info['G_out'])
-            obj = w1 * cov + w2 * div
-            results['coverage'].append(cov)
-            results['diversity'].append(div)
-            results['objective'].append(obj)
-            step += 1
+            action = agent.act(obs)
+            next_obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
-        
-        greedy = GreedyExplorer(
-            D=dataset,
-            H=[hypothesis],
-            alpha=alpha,
-            n=n,
-            eta=eta,
-            lambd=lambd,
-            w1=w1,
-            w2=w2,
-        )
-        greedy.reset()
+            agent.learn(obs, action, reward, next_obs, done)
+            obs = next_obs
+            step += 1
+    
+    print('\tRunning RL-HEP')
+    obs, info = env.reset()
+    done = False
+    step = 0
+    while not done:
+        action = agent.act(obs)
+        next_obs, reward, terminated, truncated, info = env.step(action)
 
-        g_in_greedy = []
-        G_out_greedy = []
+        cov = info['coverage']
+        div = info['diversity']
+        div_norm = diversity(info['G_out'], normalized=True)
 
-        steps = len(g_in_rl)
-        for step in range(steps):
-            selected_g_in, selected_G_out = greedy.step()
-            g_in_greedy.append(selected_g_in)
-            G_out_greedy.append(selected_G_out)
-            results['step'].append(step)
-            results['n'].append(n)
-            results['w1'].append(w1)
-            results['w2'].append(w2)
-            results['algorithm'].append('greedy')
-            results['g_in'].append(str(selected_g_in))
-            results['G_out'].append('; '.join([str(g) for g in selected_G_out]))
-            cov = coverage(selected_G_out, selected_g_in)
-            div = diversity(selected_G_out)
-            obj = w1 * cov + w2 * div
-            results['coverage'].append(cov)
-            results['diversity'].append(div)
-            results['objective'].append(obj)
-            print(f'Step {step}, wealth: {greedy.wealth}')
-            print(selected_g_in)
-            for g in selected_G_out:
-                print('\t' + str(g))
+        stepwise_results['algorithm'].append('RL-HEP')
+        stepwise_results['step'].append(step)
+        stepwise_results['g_in'].append(str(info['g_in']))
+        stepwise_results['h'].append(str(info['h']))
+        stepwise_results['G_out'].append(', '.join([str(g) for g in info['G_out']]))
+        stepwise_results['coverage'].append(cov)
+        stepwise_results['diversity'].append(div)
+        stepwise_results['normalized_diversity'].append(div_norm)
 
-results = pd.DataFrame(results)
-results.to_csv('../results/MovieLens/rl_vs_greedy.csv', index=False)
+        done = terminated or truncated
+        # agent.learn(obs, action, reward, next_obs, done)
+        obs = next_obs
+        step += 1
+    
+    rl_power, rl_fdr = compute_significance(env._request_history, alpha)
+    pipeline_results['algorithm'].append('RL-HEP')
+    pipeline_results['power'].append(rl_power)
+    pipeline_results['fdr'].append(rl_fdr)
+    
+
+    pipeline_results = pd.DataFrame(pipeline_results)
+    pipeline_results.to_csv(f'../results/{dataset_name}/rl_vs_greedy_pipeline_results.csv', index=False)
+
+    stepwise_results = pd.DataFrame(stepwise_results)
+    stepwise_results.to_csv(f'../results/{dataset_name}/rl_vs_greedy_stepwise_results.csv', index=False)

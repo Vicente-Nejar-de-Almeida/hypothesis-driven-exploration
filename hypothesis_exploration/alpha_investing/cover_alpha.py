@@ -1,36 +1,34 @@
 import numpy as np
 from math import sqrt
-from hypothesis_exploration.user_data_model import Dataset, Group, generate_candidates, coverage, diversity
+from hypothesis_exploration.user_data_model import Dataset, Group, generate_candidates, coverage
 from hypothesis_exploration.hypothesis_testing.hypothesis_test import HypothesisTest
 
 
-def cover_alpha(D: Dataset, g_in: Group, h: HypothesisTest, alpha: float, n: float, wealth: float, lambd: float) -> tuple[list, float, float, float, float]:
+def cover_alpha(D: Dataset, g_in: Group, h: HypothesisTest, alpha: float, n: float, wealth: float, gamma: float, request_history: dict) -> tuple[list, float]:
     candidate_groups = generate_candidates(g_in=g_in, dataset=D)
     available_wealth = wealth
-    alpha_star = available_wealth / (lambd + available_wealth)
+    alpha_star = available_wealth / (gamma + available_wealth)
     G_out = set()
-    tested_requests = []
-    rejects = []
-    pvals = []
     
     while (len(candidate_groups) > 0) and (available_wealth > 0) and (len(G_out) < n):
         g_star_index = np.argmax([coverage(G_out.union({g}), g_in) for g in candidate_groups])
         g_star = candidate_groups.pop(g_star_index)
+
         current_alpha = alpha_star * sqrt(coverage({g_star}, g_in))
+
+        if (str(g_star), h) in request_history:
+            if request_history[(str(g_star), h)][1]:
+                G_out.add(g_star)
+            continue
 
         if available_wealth - (current_alpha / (1 - current_alpha)) >= 0:
             pval = h.test(g_star.sample)
-            pvals.append(pval)
             if pval <= current_alpha:
                 available_wealth += alpha
                 G_out.add(g_star)
-                rejects.append(True)
+                request_history[(str(g_star), h)] = (pval, True)
             else:
                 available_wealth -= (current_alpha / (1 - current_alpha))
-                rejects.append(False)
-            tested_requests.append((str(g_star), h))
+                request_history[(str(g_star), h)] = (pval, False)
     
-    cov_value = coverage(G_out, g_in)
-    div_value = diversity(G_out)
-    
-    return G_out, available_wealth, cov_value, div_value, tested_requests, rejects, pvals
+    return G_out, available_wealth
