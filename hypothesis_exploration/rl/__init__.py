@@ -1,3 +1,2 @@
 from hypothesis_exploration.rl.group_exploration_env import GroupExplorationEnv
-from hypothesis_exploration.rl.ql_agent import QLAgent
 from hypothesis_exploration.rl.linear_rl import TrueOnlineSarsaLambda
