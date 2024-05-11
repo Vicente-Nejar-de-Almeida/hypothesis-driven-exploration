@@ -12,7 +12,7 @@ class ExplorationNode:
 
 
 class GreedyExplorer:
-    def __init__(self, D: Dataset, H: list[HypothesisTest], alpha: float, n: float, eta: float, gamma: float, lambd: float):
+    def __init__(self, D: Dataset, H: list[HypothesisTest], alpha: float, n: float, eta: float, gamma: float, lambd: float, starting_predicates: dict = {}):
         self.D = D
         self.H = H
         self.alpha = alpha
@@ -20,6 +20,7 @@ class GreedyExplorer:
         self.eta = eta
         self.gamma = gamma
         self.lambd = lambd
+        self.starting_predicates = starting_predicates
 
         self.reset()
     
@@ -37,7 +38,7 @@ class GreedyExplorer:
         self.G_out_dict[(g_in, h)] = G_out
     
     def run_covdiv_at_root(self):
-        g_in = Group(dataset=self.D, predicates={})
+        g_in = Group(dataset=self.D, predicates=self.starting_predicates)
         for h in self.H:
             if self.wealth <= 0: return
             self.run_covdiv(g_in, h)

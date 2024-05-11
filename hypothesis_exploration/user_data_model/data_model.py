@@ -59,7 +59,8 @@ class Group:
             return 'Empty group'
         
         str_of_predicates = []
-        for att, val in sorted(self.predicates.items(), key=lambda p: p[0]):
+        for att, val in self.predicates.items():
+        # for att, val in sorted(self.predicates.items(), key=lambda p: p[0]):
             str_of_predicates.append(f'{att}:{val}')
         if len(str_of_predicates) > 0:
             return '|'.join(str_of_predicates)
