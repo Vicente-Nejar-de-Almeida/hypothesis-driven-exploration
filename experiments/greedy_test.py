@@ -29,8 +29,18 @@ movie_dataset = Dataset(
 
 movie_hypotheses = [
     HypothesisTest(aggregation='mean', null_value=4, alternative='greater', n_sample=HypothesisTest.ONE_SAMPLE),
-    # HypothesisTest(aggregation='mean', null_value=3.5, alternative='less', n_sample=HypothesisTest.ONE_SAMPLE),
+    HypothesisTest(aggregation='mean', null_value=3.4, alternative='less', n_sample=HypothesisTest.ONE_SAMPLE),
+    HypothesisTest(aggregation='variance', null_value=1.4, alternative='greater', n_sample=HypothesisTest.ONE_SAMPLE),
 ]
+
+
+movie_hypotheses = [
+    HypothesisTest(aggregation='mean', null_value=4.9, alternative='greater', n_sample=HypothesisTest.ONE_SAMPLE),
+    HypothesisTest(aggregation='mean', null_value=3.5, alternative='less', n_sample=HypothesisTest.ONE_SAMPLE),
+    HypothesisTest(aggregation='variance', null_value=4.4, alternative='greater', n_sample=HypothesisTest.ONE_SAMPLE),
+]
+
+
 
 eta = 1
 alpha = 0.05
@@ -44,15 +54,17 @@ datasets = {
     'MovieLens': (movie_dataset, movie_hypotheses),
 }
 
-color_mapping = {
-    'genre': '#636EFA',
-    'runtime_minutes': '#EF553B',
-    'year': '#00CC96',
-    'gender': '#AB63FA',
-    'age': '#FFA15A',
-    'occupation': '#19D3F3',
-    'location': '#FF6692',
+hypothesis_to_color = {
+    0: '#636EFA',
+    1: '#EF553B',
+    2: '#00CC96',
+    3: '#AB63FA',
+    4: '#FFA15A',
+    5: '#19D3F3',
+    6: '#FF6692',
 }
+
+
 
 for dataset_name, dataset_variables in datasets.items():
 
@@ -77,26 +89,33 @@ for dataset_name, dataset_variables in datasets.items():
     labels = []
     color_sequence = []
     parents = []
+    user_counts = []
 
     for step in range(m):
         selected_g_in, selected_G_out, selected_h = greedy.step()
         print(selected_h)
-        print(str(selected_g_in) + ' - ' + str(len(selected_g_in.user_ids)) + 'users')
+        print(selected_g_in.to_string_in_exploration_order() + ' - ' + str(len(selected_g_in.user_ids)) + 'users')
 
         
         if len(parents) == 0:
-            ids.append(','.join(selected_g_in.predicates.values()))
-            color_sequence.append(color_mapping[list(selected_g_in.predicates.keys())[-1]])
-            labels.append(list(selected_g_in.predicates.values())[-1])
+            if len(selected_g_in.predicates) > 0:
+                ids.append(','.join(selected_g_in.predicates.values()))
+                labels.append(list(selected_g_in.predicates.values())[-1])
+            else:
+                ids.append('')
+                labels.append(dataset_name)
+            color_sequence.append('')
             parents.append('')
+            user_counts.append(len(selected_g_in.user_ids))
             
         
         for g in selected_G_out:
-            print('\t' + str(g) + ' - ' + str(len(g.user_ids)) + 'users')
+            print('\t' + g.to_string_in_exploration_order() + ' - ' + str(len(g.user_ids)) + 'users')
             ids.append(','.join(g.predicates.values()))
             labels.append(list(g.predicates.values())[-1])
-            color_sequence.append(color_mapping[list(g.predicates.keys())[-1]])
+            color_sequence.append(hypothesis_to_color[hypotheses.index(selected_h)])
             parents.append(','.join(selected_g_in.predicates.values()))
+            user_counts.append(len(g.user_ids))
         print()
 
         cov = coverage(selected_G_out, selected_g_in)
@@ -107,3 +126,4 @@ for dataset_name, dataset_variables in datasets.items():
     print(f'labels = {labels}')
     print(f'color_sequence = {color_sequence}')
     print(f'parents = {parents}')
+    print(f'user_counts = {user_counts}')

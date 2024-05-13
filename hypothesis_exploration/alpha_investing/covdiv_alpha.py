@@ -60,9 +60,12 @@ def covdiv_alpha(D: Dataset, g_in: Group, h: HypothesisTest, alpha: float, n: fl
         current_alpha = alpha_star * sqrt(x * coverage({g_star}, g_in) + lambd * x * proportion_of_new_users(g_star, G_out))
         
         if (str(g_star), h) in request_history:
+            continue
+            """
             if request_history[(str(g_star), h)][1]:
                 G_out.add(g_star)
             continue
+            """
             
         if available_wealth - (current_alpha / (1 - current_alpha)) >= 0:
             pval = h.test(g_star.sample)
